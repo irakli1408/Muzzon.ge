@@ -1,6 +1,12 @@
-﻿using System.Diagnostics;
+﻿using jagajugi.ge.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
+
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<JuzzonDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("JuzzonConnection") + ";TrustServerCertificate=True"));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -13,11 +19,25 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync("{\"error\": \"An unexpected error occurred.\"}");
+    }
+});
+
 app.MapPost("/download-video", (string url) =>
 {
-    if (string.IsNullOrEmpty(url))
+    if (!IsValidYouTubeUrl(url))
     {
-        return Results.BadRequest("URL is required.");
+        return Results.BadRequest("Only valid YouTube links are allowed.");
     }
 
     string outputDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
@@ -66,5 +86,25 @@ app.MapPost("/download-video", (string url) =>
 
     return Results.Ok("✅ Done! Check the 'downloads' folder.");
 });
+
+static bool IsValidYouTubeUrl(string url)
+{
+    if (string.IsNullOrWhiteSpace(url))
+        return false;
+
+    if (!Uri.IsWellFormedUriString(url, UriKind.Absolute))
+        return false;
+
+    var uri = new Uri(url);
+    var allowedHosts = new[]
+    {
+        "www.youtube.com",
+        "youtube.com",
+        "youtu.be",
+        "m.youtube.com"
+    };
+
+    return allowedHosts.Contains(uri.Host);
+}
 
 app.Run();
