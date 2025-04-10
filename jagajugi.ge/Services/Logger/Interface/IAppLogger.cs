@@ -1,6 +1,4 @@
-﻿using jagajugi.ge.Data.Entity;
-
-namespace jagajugi.ge.Services.Logger.Interface
+﻿namespace jagajugi.ge.Services.Logger.Interface
 {
     public interface IAppLogger
     {

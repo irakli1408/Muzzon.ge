@@ -27,7 +27,6 @@ namespace jagajugi.ge.Services.Logger
             _context.DownloadLogs.Add(log);
             await _context.SaveChangesAsync();
         }
-
         public async Task LogErrorAsync(string url, string errorMessage, string stackTrace, string? errorType = null, string? country = null, string? region = null)
         {
             var log = new ErrorLog
