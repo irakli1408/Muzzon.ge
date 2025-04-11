@@ -1,8 +1,8 @@
-﻿using jagajugi.ge.Data;
-using jagajugi.ge.Data.Entity;
-using jagajugi.ge.Services.Logger.Interface;
+﻿using Muzzon.ge.Data;
+using Muzzon.ge.Data.Entity;
+using Muzzon.ge.Services.Logger.Interface;
 
-namespace jagajugi.ge.Services.Logger
+namespace Muzzon.ge.Services.Logger
 {
     public class AppLogger : IAppLogger
     {

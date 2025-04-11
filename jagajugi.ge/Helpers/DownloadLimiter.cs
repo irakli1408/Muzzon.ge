@@ -1,4 +1,4 @@
-﻿namespace jagajugi.ge.Helpers
+﻿namespace Muzzon.ge.Helpers
 {
     public static class DownloadLimiter
     {

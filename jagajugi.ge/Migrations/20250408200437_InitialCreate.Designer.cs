@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using jagajugi.ge.Data;
+using Muzzon.ge.Data;
 
 #nullable disable
 
-namespace jagajugi.ge.Migrations
+namespace Muzzon.ge.Migrations
 {
     [DbContext(typeof(JuzzonDbContext))]
     [Migration("20250408200437_InitialCreate")]
@@ -25,7 +25,7 @@ namespace jagajugi.ge.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("jagajugi.ge.Data.Entity.DownloadLog", b =>
+            modelBuilder.Entity("Muzzon.ge.Data.Entity.DownloadLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -55,7 +55,7 @@ namespace jagajugi.ge.Migrations
                     b.ToTable("DownloadLogs");
                 });
 
-            modelBuilder.Entity("jagajugi.ge.Data.Entity.ErrorLog", b =>
+            modelBuilder.Entity("Muzzon.ge.Data.Entity.ErrorLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()

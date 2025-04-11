@@ -1,6 +1,6 @@
-@jagajugi.ge_HostAddress = http://localhost:5284
+@Muzzon.ge_HostAddress = http://localhost:5284
 
-GET {{jagajugi.ge_HostAddress}}/weatherforecast/
+GET {{Muzzon.ge_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###

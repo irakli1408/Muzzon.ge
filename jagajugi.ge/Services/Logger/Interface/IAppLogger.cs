@@ -1,4 +1,4 @@
-﻿namespace jagajugi.ge.Services.Logger.Interface
+﻿namespace Muzzon.ge.Services.Logger.Interface
 {
     public interface IAppLogger
     {

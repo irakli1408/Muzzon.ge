@@ -1,7 +1,7 @@
-﻿using jagajugi.ge.Data.Entity;
+﻿using Muzzon.ge.Data.Entity;
 using Microsoft.EntityFrameworkCore;
 
-namespace jagajugi.ge.Data
+namespace Muzzon.ge.Data
 {
     public class JuzzonDbContext : DbContext
     {

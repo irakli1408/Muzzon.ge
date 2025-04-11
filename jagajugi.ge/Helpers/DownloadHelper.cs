@@ -1,9 +1,9 @@
-﻿using jagajugi.ge.Services.Logger.Interface;
+﻿using Muzzon.ge.Services.Logger.Interface;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Text;
-
-namespace jagajugi.ge.Helpers
+ 
+namespace Muzzon.ge.Helpers
 {
     public static class DownloadHelper
     {

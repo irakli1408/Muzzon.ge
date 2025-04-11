@@ -1,8 +1,8 @@
 ﻿using AspNetCoreRateLimit;
-using jagajugi.ge.Data;
-using jagajugi.ge.Helpers;
-using jagajugi.ge.Services.Logger;
-using jagajugi.ge.Services.Logger.Interface;
+using Muzzon.ge.Data;
+using Muzzon.ge.Helpers;
+using Muzzon.ge.Services.Logger;
+using Muzzon.ge.Services.Logger.Interface;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;

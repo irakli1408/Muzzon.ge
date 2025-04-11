@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace jagajugi.ge.Migrations
+namespace Muzzon.ge.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

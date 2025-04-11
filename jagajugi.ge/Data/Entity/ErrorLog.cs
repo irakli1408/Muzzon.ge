@@ -1,4 +1,4 @@
-﻿namespace jagajugi.ge.Data.Entity
+﻿namespace Muzzon.ge.Data.Entity
 {
     public class ErrorLog
     {
