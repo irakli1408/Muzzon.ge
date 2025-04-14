@@ -12,6 +12,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<JuzzonDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("JuzzonConnection")));
 
+var environment = builder.Environment.EnvironmentName;
+
+builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                      .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: true);
+
 builder.Services.AddScoped<IAppLogger, AppLogger>();
 
 builder.Services.AddOptions();
@@ -106,7 +111,7 @@ app.Use(async (context, next) =>
 app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IConfiguration config) =>
 {
     if (!DownloadHelper.IsValidYouTubeUrl(url))
-        return Results.BadRequest("Only valid YouTube links are allowed.");
+        return Results.BadRequest("ნებადართულია მხოლოდ მოქმედი YouTube ბმულები.");
 
     var timeoutMinutes = config.GetSection("DownloadSettings:DownloadTimeoutMinutes").Get<int>();
 
