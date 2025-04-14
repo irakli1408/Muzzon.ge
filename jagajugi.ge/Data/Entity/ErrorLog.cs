@@ -10,5 +10,6 @@
         public string? Country { get; set; }
         public string? Region { get; set; }
         public string? ErrorType { get; set; }
+        public string? IpAddress { get; set; }
     }
 }

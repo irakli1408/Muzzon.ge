@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Muzzon.ge.Data;
 
@@ -11,9 +12,11 @@ using Muzzon.ge.Data;
 namespace Muzzon.ge.Migrations
 {
     [DbContext(typeof(JuzzonDbContext))]
-    partial class JuzzonDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250414123732_addedIpAddressToLogTable")]
+    partial class addedIpAddressToLogTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
