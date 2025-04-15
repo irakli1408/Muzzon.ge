@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Muzzon.ge.Constants;
 using Muzzon.ge.Data;
 using Muzzon.ge.Helpers;
 using Muzzon.ge.Services.Logger;
@@ -61,7 +62,7 @@ app.Use(async (context, next) =>
     {
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\": \"Missing IP address.\"}");
+        await context.Response.WriteAsync($"{{\"error\": \"{ErrorMessages.MissingIp}\"}}");
         return;
     }
 
@@ -82,18 +83,24 @@ app.Use(async (context, next) =>
     }
     catch (InvalidOperationException ex)
     {
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        context.Response.ContentType = "application/json";
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
 
-        var errorResponse = new { error = ex.Message };
-        var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
+            var errorResponse = new { error = ex.Message };
+            var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
 
-        await context.Response.WriteAsync(json, context.RequestAborted);
+            await context.Response.WriteAsync(json, context.RequestAborted);
+        }
     }
     catch (OperationCanceledException ex)
     {
-        var logger = context.RequestServices.GetRequiredService<IAppLogger>();
-        await DownloadHelper.HandleTimeoutAsync(context, ex, logger);
+        if (!context.Response.HasStarted)
+        {
+            var logger = context.RequestServices.GetRequiredService<IAppLogger>();
+            await DownloadHelper.HandleTimeoutAsync(context, ex, logger);
+        }
     }
 
     catch (Exception ex)
@@ -103,10 +110,11 @@ app.Use(async (context, next) =>
     }
 });
 
-app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IConfiguration config) =>
+app.MapGet("/stream-mp3", async (HttpContext context, string url, string id, IAppLogger logger, IConfiguration config) =>
 {
-    if (!DownloadHelper.IsValidYouTubeUrl(url))
-        return Results.BadRequest("Only valid YouTube links are allowed.");
+    var error = DownloadHelper.ValidateYouTubeUrl(url);
+    if (error != null)
+        return Results.BadRequest(error);
 
     var timeoutMinutes = config.GetSection("DownloadSettings:DownloadTimeoutMinutes").Get<int>();
 
@@ -116,7 +124,7 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger log
 
     try
     {
-        await DownloadHelper.StreamAudioToBrowserAsync(context, url, logger, config, cts.Token);
+        await DownloadHelper.StreamAudioToBrowserAsync(context, url, id, logger, config, cts.Token);
         return Results.Empty;
     }
     catch (OperationCanceledException ex)
@@ -134,5 +142,18 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger log
         DownloadLimiter.Semaphore.Release();
     }
 }).RequireRateLimiting("fixed");
+
+app.MapGet("/progress", (HttpContext context, string id) =>
+{
+    if (string.IsNullOrEmpty(id))
+        return Results.BadRequest(new { error = "Missing progress ID." });
+
+    var progress = ProgressTracker.GetProgress(id);
+    if (progress == null)
+        return Results.NotFound(new { error = "Progress not found." });
+
+    return Results.Ok(new { progress });
+});
+
 
 app.Run();
