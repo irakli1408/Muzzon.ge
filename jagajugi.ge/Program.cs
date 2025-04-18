@@ -110,13 +110,13 @@ app.Use(async (context, next) =>
     }
 });
 
-app.MapGet("/stream-mp3", async (HttpContext context, string url, string id, IAppLogger logger, IConfiguration config) =>
+app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IConfiguration config) =>
 {
     var error = DownloadHelper.ValidateYouTubeUrl(url);
     if (error != null)
         return Results.BadRequest(error);
 
-    var timeoutMinutes = config.GetSection("DownloadSettings:DownloadTimeoutMinutes").Get<int>();
+    var timeoutMinutes = config.GetValue<int>("DownloadSettings:DownloadTimeoutMinutes");
 
     await DownloadLimiter.Semaphore.WaitAsync();
 
@@ -124,7 +124,7 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, string id, IAp
 
     try
     {
-        await DownloadHelper.StreamAudioToBrowserAsync(context, url, id, logger, config, cts.Token);
+        await DownloadHelper.StreamAudioToBrowserAsync(context, url, logger, config, cts.Token);
         return Results.Empty;
     }
     catch (OperationCanceledException ex)
@@ -142,18 +142,6 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, string id, IAp
         DownloadLimiter.Semaphore.Release();
     }
 }).RequireRateLimiting("fixed");
-
-app.MapGet("/progress", (HttpContext context, string id) =>
-{
-    if (string.IsNullOrEmpty(id))
-        return Results.BadRequest(new { error = "Missing progress ID." });
-
-    var progress = ProgressTracker.GetProgress(id);
-    if (progress == null)
-        return Results.NotFound(new { error = "Progress not found." });
-
-    return Results.Ok(new { progress });
-});
 
 
 app.Run();
