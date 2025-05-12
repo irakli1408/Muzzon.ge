@@ -34,25 +34,6 @@ namespace Muzzon.ge.Helpers
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
-        public static bool IsValidYouTubeUrl(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-                return false;
-
-            var pattern = @"^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[\w\-]{11}";
-            if (!Regex.IsMatch(url, pattern))
-                return false;
-
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                return false;
-
-            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-
-            if (!string.IsNullOrEmpty(query.Get("list")))
-                return false;
-
-            return true;
-        }
 
         public static string? ValidateYouTubeUrl(string url)
         {
@@ -166,10 +147,6 @@ namespace Muzzon.ge.Helpers
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
-        public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
-        {
-            var (title, videoDuration) = await GetVideoTitleAndDurationAsync(url);
-
 
 
         public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, IWebHostEnvironment env, CancellationToken cancellationToken)
@@ -276,7 +253,7 @@ namespace Muzzon.ge.Helpers
                     await logger.LogErrorAsync(
                         url: url,
                         errorMessage: "[yt-dlp stderr] " + line,
-                        stackTrace: "", // здесь нет stack trace — можно оставить пустым
+                        stackTrace: "",
                         errorType: "YTDLP-Stderr",
                         country: country,
                         region: region
@@ -293,7 +270,7 @@ namespace Muzzon.ge.Helpers
                 try
                 {
                     using var reader = process.StandardError;
-                    while (await reader.ReadLineAsync() != null) { }                  
+                    while (await reader.ReadLineAsync() != null) { }
                 }
                 catch
                 {
@@ -361,7 +338,7 @@ namespace Muzzon.ge.Helpers
                         region = ipData.RegionName ?? "unknown";
                     }
                 }
-                catch { }              
+                catch { }
             }
 
             return (ip, country, region);
