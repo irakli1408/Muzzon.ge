@@ -79,8 +79,7 @@ namespace Muzzon.ge.Helpers
             return new ProcessStartInfo
             {
                 FileName = "yt-dlp",
-                //Arguments = $"-f bestaudio -x --audio-format mp3 -o - {url}",
-                Arguments = $"-f bestaudio -x --audio-format mp3 -o \"%(title)s.%(ext)s\" {url}",
+                Arguments = $"--force-ipv4 --no-part -f bestaudio -x --audio-format mp3 -o - {url}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -167,125 +166,35 @@ namespace Muzzon.ge.Helpers
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
-
-        //public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
-        //{
-
-        //    var ipData = await ResolveClientGeoAsync(context, logger, cancellationToken);
-
-        //    // ✅ Шаг 1: Получаем заголовок
-        //    string title = "unknown";
-
-        //    //try
-        //    //{
-        //    //    var titleStartInfo = new ProcessStartInfo
-        //    //    {
-        //    //        FileName = "yt-dlp",
-        //    //        Arguments = $"--print title \"{url}\"",
-        //    //        RedirectStandardOutput = true,
-        //    //        RedirectStandardError = true,
-        //    //        UseShellExecute = false,
-        //    //        CreateNoWindow = true
-        //    //    };
-
-        //    //    using var titleProcess = Process.Start(titleStartInfo);
-        //    //    title = (await titleProcess!.StandardOutput.ReadLineAsync())?.Trim() ?? "audio";
-        //    //    await titleProcess.WaitForExitAsync(cancellationToken);
-        //    //}
-        //    //catch
-        //    //{
-        //    //    title = "audio";
-        //    //}
-
-        //    // ✅ Шаг 2: Запускаем основной процесс для стриминга
-        //    var psi = new ProcessStartInfo
-        //    {
-        //        FileName = "yt-dlp",
-        //        Arguments = $"-f bestaudio -x --audio-format mp3 --no-playlist -o - \"{url}\"",
-        //        RedirectStandardOutput = true,
-        //        RedirectStandardError = true,
-        //        UseShellExecute = false,
-        //        CreateNoWindow = true
-        //    };
-
-        //    using var process = new Process { StartInfo = psi };
-        //    process.Start();
-
-        //    context.Response.StatusCode = 200;
-        //    context.Response.ContentType = "audio/mpeg";
-        //    //var safeTitle = SanitizeFileName(title);
-        //    context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{"safeTitle"}.mp3\"";
-
-        //    // ✅ Таймер стриминга
-        //    var streamWatch = Stopwatch.StartNew();
-
-        //    var copyTask = process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, cancellationToken);
-        //    var waitTask = process.WaitForExitAsync(cancellationToken);
-        //    var completed = await Task.WhenAny(copyTask, waitTask);
-
-        //    if (completed != copyTask && !process.HasExited)
-        //    {
-        //        try { process.Kill(true); } catch { }
-        //        throw new OperationCanceledException("Download timed out.");
-        //    }
-
-        //    cancellationToken.ThrowIfCancellationRequested();
-
-
-        //    //if (process.ExitCode != 0)
-        //    //{
-        //    //    //await logger.LogErrorAsync(
-        //    //    //    url: url,
-        //    //    //    errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
-        //    //    //    stackTrace: "",
-        //    //    //    errorType: "YTDLPProcessError",
-        //    //    //    country: ipData.Country,
-        //    //    //    region: ipData.Region,
-        //    //    //    ipData.Ip
-        //    //    );
-        //    //}
-        //    //else
-        //    //{
-        //    //    //await logger.LogDownloadAsync(
-        //    //    //    url: url,
-        //    //    //    fileName: title,
-        //    //    //    country: ipData.Country,
-        //    //    //    region: ipData.Region,
-        //    //    //    ipAddress: ipData.Ip
-
-        //    //    );
-        //    //}
-        //}
-
-
-
         public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
         {
-            //var (title, videoDuration) = await GetVideoTitleAndDurationAsync(url);
+            var (title, videoDuration) = await GetVideoTitleAndDurationAsync(url);
 
-            //var maxDuration = config.GetValue<int>("DownloadSettings:MaxDurationSeconds");
+            var maxDuration = config.GetValue<int>("DownloadSettings:MaxDurationSeconds");
 
-            //var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
+            var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
 
-            //if (videoDuration > maxDuration)
-            //{
-            //    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            //    context.Response.ContentType = "application/json";
+            if (videoDuration > maxDuration)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                context.Response.ContentType = "application/json";
 
-            //    var errorResponse = new { error = "ვიდეოს ხანგრძლივობა აღემატება 15 წუთს." };
-            //    var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
-            //    await context.Response.WriteAsync(json, cancellationToken);
-            //    return;
-            //}
+                var errorResponse = new { error = "ვიდეოს ხანგრძლივობა აღემატება 15 წუთს." };
+                var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
+                await context.Response.WriteAsync(json, cancellationToken);
+                return;
+            }
 
             var processStartInfo = CreateProcessStartInfo(url);
 
             var process = new Process { StartInfo = processStartInfo };
             process.Start();
 
+            _ = DownloadHelper.LogProcessErrorStreamAsync(process, context, url, logger, cancellationToken);
+
             context.Response.StatusCode = 200;
             context.Response.ContentType = "audio/mpeg";
-            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName("title111")}.mp3\"";
+            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName(title)}.mp3\"";
             context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
             context.Response.Headers["Pragma"] = "no-cache";
             context.Response.Headers["Expires"] = "0";
@@ -297,176 +206,56 @@ namespace Muzzon.ge.Helpers
             await process.WaitForExitAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            //    if (process.ExitCode != 0)
-            //    {
-            //        await logger.LogErrorAsync(
-            //            url: url,
-            //            errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
-            //            stackTrace: "",
-            //            errorType: "YTDLPProcessError",
-            //            country: ipData.Country,
-            //            region: ipData.Region,
-            //            ipData.Ip
-            //        );
-            //    }
-            //    else
-            //    {
-            //        await logger.LogDownloadAsync(
-            //            url: url,
-            //            fileName: title ?? "unknown",
-            //            country: ipData.Country,
-            //            region: ipData.Region,
-            //            ipData.Ip
-            //        );
-            //    }
-            //}
-
-
+            if (process.ExitCode != 0)
+            {
+                await logger.LogErrorAsync(
+                    url: url,
+                    errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
+                    stackTrace: "",
+                    errorType: "YTDLPProcessError",
+                    country: ipData.Country,
+                    region: ipData.Region,
+                    ipData.Ip
+                );
+            }
+            else
+            {
+                await logger.LogDownloadAsync(
+                    url: url,
+                    fileName: title ?? "unknown",
+                    country: ipData.Country,
+                    region: ipData.Region,
+                    ipData.Ip
+                );
+            }
         }
+        public static Task LogProcessErrorStreamAsync(
+        Process process,
+        HttpContext context,
+        string url,
+        IAppLogger logger,
+        CancellationToken token)
+        {
+            return Task.Run(async () =>
+            {
+                string country = context.Request.Headers["X-Country"].FirstOrDefault() ?? "unknown";
+                string region = context.Request.Headers["X-Region"].FirstOrDefault() ?? "unknown";
 
-
-        //public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
-        //{
-        //    string? detectedTitle = null;
-
-        //    var processStartInfo = CreateProcessStartInfo(url);
-        //    var process = new Process { StartInfo = processStartInfo };
-
-        //    process.ErrorDataReceived += (sender, args) =>
-        //    {
-        //        if (string.IsNullOrWhiteSpace(args.Data))
-        //            return;
-
-        //        var data = args.Data.Trim();
-
-        //        // Пример строки: [ExtractAudio] Destination: My Cool Song.mp3
-        //        if (data.Contains("Destination:"))
-        //        {
-        //            var match = Regex.Match(data, @"Destination:\s+(.+)\.mp3", RegexOptions.IgnoreCase);
-        //            if (match.Success)
-        //            {
-        //                detectedTitle = match.Groups[1].Value;
-        //            }
-        //        }
-
-        //        // Можно логировать stderr при отладке:
-        //        // Console.WriteLine("[yt-dlp stderr] " + data);
-        //    };
-
-        //    process.Start();
-        //    process.BeginErrorReadLine(); 
-        //    context.Response.StatusCode = 200;
-        //    context.Response.ContentType = "audio/mpeg";
-
-        //    var titleForHeader = SanitizeFileName(detectedTitle ?? "audio");
-
-        //    context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{titleForHeader}.mp3\"";
-        //    context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-        //    context.Response.Headers["Pragma"] = "no-cache";
-        //    context.Response.Headers["Expires"] = "0";
-        //    context.Response.Headers["Accept-Ranges"] = "none";
-        //    context.Response.Headers["Connection"] = "close";
-
-        //    var copyTask = process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, cancellationToken);
-        //    var waitTask = process.WaitForExitAsync(cancellationToken);
-        //    var completed = await Task.WhenAny(copyTask, waitTask);
-
-        //    if (completed != copyTask && !process.HasExited)
-        //    {
-        //        try { process.Kill(true); } catch { }
-        //        throw new OperationCanceledException();
-        //    }
-
-        //    cancellationToken.ThrowIfCancellationRequested();
-
-        //    var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
-
-        //    if (process.ExitCode != 0)
-        //    {
-        //        await logger.LogErrorAsync(
-        //            url: url,
-        //            errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
-        //            stackTrace: "",
-        //            errorType: "YTDLPProcessError",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //    else
-        //    {
-        //        await logger.LogDownloadAsync(
-        //            url: url,
-        //            fileName: detectedTitle ?? "unknown",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //}
-
-
-        //public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
-        //{
-
-        //    var processStartInfo = CreateProcessStartInfo(url);
-
-        //    var process = new Process { StartInfo = processStartInfo };
-        //    process.Start();
-
-        //    //_ = DownloadHelper.LogProcessErrorStreamAsync(process, context, url, logger, cancellationToken);
-
-        //    context.Response.StatusCode = 200;
-        //    context.Response.ContentType = "audio/mpeg";
-        //    context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName("title")}.mp3\"";
-        //    context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-        //    context.Response.Headers["Pragma"] = "no-cache";
-        //    context.Response.Headers["Expires"] = "0";
-        //    context.Response.Headers["Accept-Ranges"] = "none";
-        //    context.Response.Headers["Connection"] = "close";
-
-        //    var copyTask = process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, cancellationToken);
-        //    var waitTask = process.WaitForExitAsync(cancellationToken);
-
-        //    var timeoutTask = Task.Delay(Timeout.Infinite, cancellationToken);
-        //    var completed = await Task.WhenAny(copyTask, waitTask, timeoutTask);
-
-        //    if (completed != copyTask && !process.HasExited)
-        //    {
-        //        try { process.Kill(true); } catch { }
-
-        //        throw new OperationCanceledException();
-        //    }
-
-        //    cancellationToken.ThrowIfCancellationRequested();
-
-        //    var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
-
-        //    if (process.ExitCode != 0)
-        //    {
-        //        await logger.LogErrorAsync(
-        //            url: url,
-        //            errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
-        //            stackTrace: "",
-        //            errorType: "YTDLPProcessError",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //    else
-        //    {
-        //        await logger.LogDownloadAsync(
-        //            url: url,
-        //            fileName: "title" ?? "unknown",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //}
-
-
+                string? line;
+                while (!token.IsCancellationRequested &&
+                       (line = await process.StandardError.ReadLineAsync()) != null)
+                {
+                    await logger.LogErrorAsync(
+                        url: url,
+                        errorMessage: "[yt-dlp stderr] " + line,
+                        stackTrace: "", // здесь нет stack trace — можно оставить пустым
+                        errorType: "YTDLP-Stderr",
+                        country: country,
+                        region: region
+                    );
+                }
+            }, token);
+        }
         public static string SanitizeFileName(string input)
         {
             foreach (var c in Path.GetInvalidFileNameChars())
