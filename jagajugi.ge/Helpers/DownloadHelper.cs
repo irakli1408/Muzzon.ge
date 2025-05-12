@@ -134,115 +134,49 @@ namespace Muzzon.ge.Helpers
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
 
-        //public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
-        //{
-        //   // var (title, videoDuration) = await GetVideoTitleAndDurationAsync(url);
-
-        //   // var maxDuration = config.GetValue<int>("DownloadSettings:MaxDurationSeconds");
-
-        //    var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
-
-        //    //if (videoDuration > maxDuration)
-        //    //{
-        //    //    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        //    //    context.Response.ContentType = "application/json";
-
-        //    //    var errorResponse = new { error = "ვიდეოს ხანგრძლივობა აღემატება 15 წუთს." };
-        //    //    var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
-        //    //    await context.Response.WriteAsync(json, cancellationToken);
-        //    //    return;
-        //    //}
-
-        //    var processStartInfo = CreateProcessStartInfo(url);
-
-        //    var process = new Process { StartInfo = processStartInfo };
-        //    process.Start();
-
-        //    //_ = DownloadHelper.LogProcessErrorStreamAsync(process, context, url, logger, cancellationToken);
-
-        //    context.Response.StatusCode = 200;
-        //    context.Response.ContentType = "audio/mpeg";
-        //    context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName("superman_Name")}.mp3\"";
-        //    context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-        //    context.Response.Headers["Pragma"] = "no-cache";
-        //    context.Response.Headers["Expires"] = "0";
-        //    context.Response.Headers["Accept-Ranges"] = "none";
-        //    context.Response.Headers["Connection"] = "close";
-
-        //    await process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, cancellationToken);
-
-        //    await process.WaitForExitAsync(cancellationToken);
-        //    cancellationToken.ThrowIfCancellationRequested();
-
-        //    if (process.ExitCode != 0)
-        //    {
-        //        await logger.LogErrorAsync(
-        //            url: url,
-        //            errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
-        //            stackTrace: "",
-        //            errorType: "YTDLPProcessError",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //    else
-        //    {
-        //        await logger.LogDownloadAsync(
-        //            url: url,
-        //            fileName: "title" ?? "unknown",
-        //            country: ipData.Country,
-        //            region: ipData.Region,
-        //            ipData.Ip
-        //        );
-        //    }
-        //}
 
 
-        public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
+        public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, IWebHostEnvironment env, CancellationToken cancellationToken)
         {
-            var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
+            string fileName = await GetVideoFileNameAsync(url);
 
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = $"--force-ipv4 --no-part -f bestaudio -x --audio-format mp3 -o - {url}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var processStartInfo = CreateProcessStartInfo(url);
 
             var process = new Process { StartInfo = processStartInfo };
             process.Start();
 
-            // Параллельно логируем ошибки из stderr
-            _ = LogProcessErrorStreamAsync(process, context, url, logger, cancellationToken);
+            if (env.IsDevelopment())
+            {
+                // _ = LogProcessErrorStreamAsync(process, context, url, logger, cancellationToken);
+                _ = StartSilentErrorReadAsync(process);
+            }
+            else
+            {
+                _ = StartSilentErrorReadAsync(process);
+            }
 
-            // Настраиваем ответ
             context.Response.StatusCode = 200;
             context.Response.ContentType = "audio/mpeg";
-            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName("audio")}.mp3\"";
+            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName(fileName)}.mp3\"";
             context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
             context.Response.Headers["Pragma"] = "no-cache";
             context.Response.Headers["Expires"] = "0";
             context.Response.Headers["Accept-Ranges"] = "none";
             context.Response.Headers["Connection"] = "close";
 
+            var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
+
             try
             {
-                // Потоковое копирование без ожидания завершения yt-dlp
                 await process.StandardOutput.BaseStream.CopyToAsync(context.Response.Body, cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                // Браузер закрыл соединение или таймаут
                 process.Kill(entireProcessTree: true);
                 throw;
             }
             finally
             {
-                // Фоновое ожидание завершения процесса
                 _ = Task.Run(async () =>
                 {
                     try
@@ -264,7 +198,7 @@ namespace Muzzon.ge.Helpers
                         {
                             await logger.LogDownloadAsync(
                                 url: url,
-                                fileName: "audio.mp3",
+                                fileName: fileName,
                                 country: ipData.Country,
                                 region: ipData.Region,
                                 ipData.Ip
@@ -286,7 +220,6 @@ namespace Muzzon.ge.Helpers
                 });
             }
         }
-
 
         public static Task LogProcessErrorStreamAsync(
         Process process,
@@ -315,6 +248,53 @@ namespace Muzzon.ge.Helpers
                 }
             }, token);
         }
+
+
+        private static Task StartSilentErrorReadAsync(Process process)
+        {
+            return Task.Run(async () =>
+            {
+                try
+                {
+                    using var reader = process.StandardError;
+                    while (await reader.ReadLineAsync() != null) { }                  
+                }
+                catch
+                {
+                }
+            });
+        }
+
+        public static async Task<string> GetVideoFileNameAsync(string url)
+        {
+            try
+            {
+                using var titleProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "yt-dlp",
+                        Arguments = $"--print filename -o \"%(title)s.%(ext)s\" {url}",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                titleProcess.Start();
+
+                string? fileName = await titleProcess.StandardOutput.ReadLineAsync();
+                await titleProcess.WaitForExitAsync();
+
+                return string.IsNullOrWhiteSpace(fileName) ? "audio.mp3" : fileName.Trim();
+            }
+            catch
+            {
+                return "audio.mp3";
+            }
+        }
+
         public static string SanitizeFileName(string input)
         {
             foreach (var c in Path.GetInvalidFileNameChars())

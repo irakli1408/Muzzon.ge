@@ -103,7 +103,7 @@ app.Use(async (context, next) =>
     }
 });
 
-app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IConfiguration config) =>
+app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IWebHostEnvironment env, IConfiguration config) =>
 {
     if (!DownloadHelper.IsValidYouTubeUrl(url))
         return Results.BadRequest("Only valid YouTube links are allowed.");
@@ -116,7 +116,7 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger log
 
     try
     {
-        await DownloadHelper.StreamAudioToBrowserAsync(context, url, logger, config, cts.Token);
+        await DownloadHelper.StreamAudioToBrowserAsync(context, url, logger, config, env, cts.Token);
         return Results.Empty;
     }
     catch (OperationCanceledException ex)
