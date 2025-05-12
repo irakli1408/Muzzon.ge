@@ -165,8 +165,10 @@ namespace Muzzon.ge.Helpers
 
             context.Response.StatusCode = 200;
             context.Response.ContentType = "audio/mpeg";
-            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{SanitizeFileName(fileName)}.mp3\"";
-            context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            var asciiFileName = RemoveNonAscii(SanitizeFileName(fileName));
+            var utf8FileName = Uri.EscapeDataString(SanitizeFileName(fileName));
+            context.Response.Headers["Content-Disposition"] =
+                $"attachment; filename=\"{asciiFileName}.mp3\"; filename*=UTF-8''{utf8FileName}.mp3"; context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
             context.Response.Headers["Pragma"] = "no-cache";
             context.Response.Headers["Expires"] = "0";
             context.Response.Headers["Accept-Ranges"] = "none";
@@ -304,6 +306,10 @@ namespace Muzzon.ge.Helpers
                 input = input.Replace(c, '_');
 
             return input;
+        }
+        private static string RemoveNonAscii(string input)
+        {
+            return new string(input.Where(c => c <= 127).ToArray());
         }
         public static async Task<(string Ip, string Country, string Region)> ResolveClientGeoAsync(HttpContext context, IAppLogger logger, CancellationToken cancellationToken = default)
         {
