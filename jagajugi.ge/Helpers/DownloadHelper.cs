@@ -34,7 +34,6 @@ namespace Muzzon.ge.Helpers
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
-
         public static string? ValidateYouTubeUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -54,7 +53,6 @@ namespace Muzzon.ge.Helpers
 
             return null;
         }
-
         public static ProcessStartInfo CreateProcessStartInfo(string url)
         {
             return new ProcessStartInfo
@@ -120,7 +118,6 @@ namespace Muzzon.ge.Helpers
 
             return (title, durationInSeconds);
         }
-
         public static async Task HandleTimeoutAsync(HttpContext context, OperationCanceledException ex, IAppLogger logger)
         {
             var fullUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
@@ -147,8 +144,6 @@ namespace Muzzon.ge.Helpers
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
-
-
         public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, IWebHostEnvironment env, CancellationToken cancellationToken)
         {
             string fileName = await GetVideoFileNameAsync(url);
@@ -233,7 +228,6 @@ namespace Muzzon.ge.Helpers
                 });
             }
         }
-
         public static Task LogProcessErrorStreamAsync(
         Process process,
         HttpContext context,
@@ -261,8 +255,6 @@ namespace Muzzon.ge.Helpers
                 }
             }, token);
         }
-
-
         private static Task StartSilentErrorReadAsync(Process process)
         {
             return Task.Run(async () =>
@@ -277,7 +269,6 @@ namespace Muzzon.ge.Helpers
                 }
             });
         }
-
         public static async Task<string> GetVideoFileNameAsync(string url)
         {
             try
@@ -307,7 +298,6 @@ namespace Muzzon.ge.Helpers
                 return "audio.mp3";
             }
         }
-
         public static string SanitizeFileName(string input)
         {
             foreach (var c in Path.GetInvalidFileNameChars())
