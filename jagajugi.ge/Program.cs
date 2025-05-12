@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Muzzon.ge.Constants;
 using Muzzon.ge.Data;
 using Muzzon.ge.Helpers;
 using Muzzon.ge.Services.Logger;
@@ -61,7 +62,7 @@ app.Use(async (context, next) =>
     {
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\": \"Missing IP address.\"}");
+        await context.Response.WriteAsync($"{{\"error\": \"{ErrorMessages.MissingIp}\"}}");
         return;
     }
 
@@ -82,18 +83,24 @@ app.Use(async (context, next) =>
     }
     catch (InvalidOperationException ex)
     {
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        context.Response.ContentType = "application/json";
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
 
-        var errorResponse = new { error = ex.Message };
-        var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
+            var errorResponse = new { error = ex.Message };
+            var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
 
-        await context.Response.WriteAsync(json, context.RequestAborted);
+            await context.Response.WriteAsync(json, context.RequestAborted);
+        }
     }
     catch (OperationCanceledException ex)
     {
-        var logger = context.RequestServices.GetRequiredService<IAppLogger>();
-        await DownloadHelper.HandleTimeoutAsync(context, ex, logger);
+        if (!context.Response.HasStarted)
+        {
+            var logger = context.RequestServices.GetRequiredService<IAppLogger>();
+            await DownloadHelper.HandleTimeoutAsync(context, ex, logger);
+        }
     }
 
     catch (Exception ex)
@@ -105,10 +112,11 @@ app.Use(async (context, next) =>
 
 app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger logger, IWebHostEnvironment env, IConfiguration config) =>
 {
-    if (!DownloadHelper.IsValidYouTubeUrl(url))
-        return Results.BadRequest("Only valid YouTube links are allowed.");
+    var error = DownloadHelper.ValidateYouTubeUrl(url);
+    if (error != null)
+        return Results.BadRequest(error);
 
-    var timeoutMinutes = config.GetSection("DownloadSettings:DownloadTimeoutMinutes").Get<int>();
+    var timeoutMinutes = config.GetValue<int>("DownloadSettings:DownloadTimeoutMinutes");
 
     await DownloadLimiter.Semaphore.WaitAsync();
 
@@ -134,5 +142,6 @@ app.MapGet("/stream-mp3", async (HttpContext context, string url, IAppLogger log
         DownloadLimiter.Semaphore.Release();
     }
 }).RequireRateLimiting("fixed");
+
 
 app.Run();

@@ -1,11 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Logging;
+﻿using Muzzon.ge.Constants;
 using Muzzon.ge.Model;
 using Muzzon.ge.Services.Logger.Interface;
-using System;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using static System.Net.WebRequestMethods;
 
 namespace Muzzon.ge.Helpers
 {
@@ -30,12 +27,11 @@ namespace Muzzon.ge.Helpers
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/json";
 
-            var errorResponse = new
+            var json = System.Text.Json.JsonSerializer.Serialize(new
             {
-                error = "⚠️ მოხდა გაუთვალისწინებელი შეცდომა."
-            };
+                error = ErrorMessages.Unexpected
+            });
 
-            var json = System.Text.Json.JsonSerializer.Serialize(errorResponse);
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
         public static bool IsValidYouTubeUrl(string url)
@@ -43,11 +39,41 @@ namespace Muzzon.ge.Helpers
             if (string.IsNullOrWhiteSpace(url))
                 return false;
 
-            var pattern = @"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=[\w\-]{11}|youtu\.be\/[\w\-]{11})";
+            var pattern = @"^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[\w\-]{11}";
+            if (!Regex.IsMatch(url, pattern))
+                return false;
 
-            var matches = Regex.Matches(url, pattern);
-            return matches.Count == 1;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return false;
+
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+            if (!string.IsNullOrEmpty(query.Get("list")))
+                return false;
+
+            return true;
         }
+
+        public static string? ValidateYouTubeUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return ErrorMessages.EmptyUrl;
+
+            var pattern = @"^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[\w\-]{11}";
+            if (!Regex.IsMatch(url, pattern))
+                return ErrorMessages.InvalidFormat;
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return ErrorMessages.InvalidUrl;
+
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+            if (!string.IsNullOrEmpty(query.Get("list")))
+                return ErrorMessages.IsPlaylist;
+
+            return null;
+        }
+
         public static ProcessStartInfo CreateProcessStartInfo(string url)
         {
             return new ProcessStartInfo
@@ -60,9 +86,9 @@ namespace Muzzon.ge.Helpers
                 CreateNoWindow = true
             };
         }
-        public static async Task<(string Title, int DurationInSeconds)> GetVideoTitleAndDurationAsync(string url)
+        public static async Task<(string title, int videoDuration)> GetVideoTitleAndDurationAsync(string url, CancellationToken cancellationToken)
         {
-            var processStartInfo = new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = "yt-dlp.exe",
                 Arguments = $"--get-title --get-duration \"{url}\"",
@@ -72,7 +98,8 @@ namespace Muzzon.ge.Helpers
                 CreateNoWindow = true
             };
 
-            var process = new Process { StartInfo = processStartInfo };
+            using var process = new Process { StartInfo = startInfo };
+
             var outputLines = new List<string>();
 
             process.OutputDataReceived += (sender, e) =>
@@ -83,7 +110,16 @@ namespace Muzzon.ge.Helpers
 
             process.Start();
             process.BeginOutputReadLine();
-            await process.WaitForExitAsync();
+
+            var timeoutTask = Task.Delay(Timeout.Infinite, cancellationToken);
+            var waitTask = process.WaitForExitAsync(cancellationToken);
+            var completed = await Task.WhenAny(waitTask, timeoutTask);
+
+            if (completed != waitTask)
+            {
+                try { process.Kill(true); } catch { }
+                throw new OperationCanceledException();
+            }
 
             if (process.ExitCode != 0 || outputLines.Count < 2)
                 return ("unknown", 0);
@@ -91,48 +127,48 @@ namespace Muzzon.ge.Helpers
             string title = SanitizeFileName(outputLines[0]);
             string durationString = outputLines[1];
 
-            var durationParts = durationString.Split(':');
             int durationInSeconds = 0;
+            var durationParts = durationString.Split(':');
 
             if (durationParts.Length == 2)
-            {
                 durationInSeconds = int.Parse(durationParts[0]) * 60 + int.Parse(durationParts[1]);
-            }
             else if (durationParts.Length == 3)
-            {
                 durationInSeconds = int.Parse(durationParts[0]) * 3600 +
                                     int.Parse(durationParts[1]) * 60 +
                                     int.Parse(durationParts[2]);
-            }
 
             return (title, durationInSeconds);
         }
+
         public static async Task HandleTimeoutAsync(HttpContext context, OperationCanceledException ex, IAppLogger logger)
         {
             var fullUrl = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
 
-            var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
+            //var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
 
-            await logger.LogErrorAsync(
-                url: fullUrl,
-                errorMessage: "⏱️ Download timed out.",
-                stackTrace: ex.StackTrace ?? "",
-                errorType: "Timeout",
-                country: ipData.Country,
-                region: ipData.Region,
-                ipData.Ip
-            );
+            //await logger.LogErrorAsync(
+            //    url: fullUrl,
+            //    errorMessage: "⏱️ Download timed out.",
+            //    stackTrace: ex.StackTrace ?? "",
+            //    errorType: "Timeout",
+            //    country: ipData.Country,
+            //    region: ipData.Region,
+            //    ipData.Ip
+            //);
 
             context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
             context.Response.ContentType = "application/json";
 
             var json = System.Text.Json.JsonSerializer.Serialize(new
             {
-                error = "⏱️ ჩატვირთვის დრო ამოიწურა. ოპერაცია ძალიან დიდხანს გაგრძელდა და გაუქმდა."
+                error = ErrorMessages.Timeout
             });
 
             await context.Response.WriteAsync(json, context.RequestAborted);
         }
+        public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, CancellationToken cancellationToken)
+        {
+            var (title, videoDuration) = await GetVideoTitleAndDurationAsync(url);
 
 
 
@@ -240,7 +276,7 @@ namespace Muzzon.ge.Helpers
                     await logger.LogErrorAsync(
                         url: url,
                         errorMessage: "[yt-dlp stderr] " + line,
-                        stackTrace: "", 
+                        stackTrace: "", // здесь нет stack trace — можно оставить пустым
                         errorType: "YTDLP-Stderr",
                         country: country,
                         region: region
@@ -325,18 +361,7 @@ namespace Muzzon.ge.Helpers
                         region = ipData.RegionName ?? "unknown";
                     }
                 }
-                catch (Exception ex)
-                {
-                    await logger.LogErrorAsync(
-                    url: $"http://ip-api.com/json/{ip}",
-                    errorMessage: ex.Message,
-                    stackTrace: ex.StackTrace ?? "",
-                    errorType: "IpLocationError",
-                    country: "unknown",
-                    region: "unknown",
-                    ip
-                    );
-                }
+                catch { }              
             }
 
             return (ip, country, region);
