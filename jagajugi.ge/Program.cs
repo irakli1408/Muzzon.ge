@@ -102,7 +102,6 @@ app.Use(async (context, next) =>
             await DownloadHelper.HandleTimeoutAsync(context, ex, logger);
         }
     }
-
     catch (Exception ex)
     {
         var logger = context.RequestServices.GetRequiredService<IAppLogger>();

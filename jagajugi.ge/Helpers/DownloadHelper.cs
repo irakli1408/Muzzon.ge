@@ -2,6 +2,7 @@
 using Muzzon.ge.Model;
 using Muzzon.ge.Services.Logger.Interface;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Muzzon.ge.Helpers
@@ -65,58 +66,44 @@ namespace Muzzon.ge.Helpers
                 CreateNoWindow = true
             };
         }
-        public static async Task<(string title, int videoDuration)> GetVideoTitleAndDurationAsync(string url, CancellationToken cancellationToken)
+        public static async Task<string> GetVideoTitleAsync(string url)
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "yt-dlp.exe",
-                Arguments = $"--get-title --get-duration \"{url}\"",
+                FileName = "yt-dlp",
+                Arguments = $"--no-playlist --skip-download --print-json {url}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8
             };
 
             using var process = new Process { StartInfo = startInfo };
-
-            var outputLines = new List<string>();
-
-            process.OutputDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                    outputLines.Add(e.Data.Trim());
-            };
-
             process.Start();
-            process.BeginOutputReadLine();
 
-            var timeoutTask = Task.Delay(Timeout.Infinite, cancellationToken);
-            var waitTask = process.WaitForExitAsync(cancellationToken);
-            var completed = await Task.WhenAny(waitTask, timeoutTask);
+            string jsonOutput = await process.StandardOutput.ReadToEndAsync();
+            string errorOutput = await process.StandardError.ReadToEndAsync();
 
-            if (completed != waitTask)
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
+                throw new Exception($"yt-dlp exited with code {process.ExitCode}. Error: {errorOutput}");
+
+            try
             {
-                try { process.Kill(true); } catch { }
-                throw new OperationCanceledException();
+                var model = JsonSerializer.Deserialize<YtDlpTitleModel>(jsonOutput, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return model?.Title ?? "Unknown";
             }
-
-            if (process.ExitCode != 0 || outputLines.Count < 2)
-                return ("unknown", 0);
-
-            string title = SanitizeFileName(outputLines[0]);
-            string durationString = outputLines[1];
-
-            int durationInSeconds = 0;
-            var durationParts = durationString.Split(':');
-
-            if (durationParts.Length == 2)
-                durationInSeconds = int.Parse(durationParts[0]) * 60 + int.Parse(durationParts[1]);
-            else if (durationParts.Length == 3)
-                durationInSeconds = int.Parse(durationParts[0]) * 3600 +
-                                    int.Parse(durationParts[1]) * 60 +
-                                    int.Parse(durationParts[2]);
-
-            return (title, durationInSeconds);
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to parse yt-dlp JSON output: {ex.Message}\nOutput: {jsonOutput}");
+            }
         }
         public static async Task HandleTimeoutAsync(HttpContext context, OperationCanceledException ex, IAppLogger logger)
         {
@@ -146,7 +133,8 @@ namespace Muzzon.ge.Helpers
         }
         public static async Task StreamAudioToBrowserAsync(HttpContext context, string url, IAppLogger logger, IConfiguration config, IWebHostEnvironment env, CancellationToken cancellationToken)
         {
-            string fileName = await GetVideoFileNameAsync(url);
+            var filename = await GetVideoTitleAsync(url);
+           
 
             var processStartInfo = CreateProcessStartInfo(url);
 
@@ -163,16 +151,19 @@ namespace Muzzon.ge.Helpers
                 _ = StartSilentErrorReadAsync(process);
             }
 
+            string sanitizedFileName = SanitizeFileName(filename);
+            string asciiFileName = RemoveNonAscii(sanitizedFileName);
+            string utf8FileName = Uri.EscapeDataString(sanitizedFileName);
+
             context.Response.StatusCode = 200;
             context.Response.ContentType = "audio/mpeg";
-            var asciiFileName = RemoveNonAscii(SanitizeFileName(fileName));
-            var utf8FileName = Uri.EscapeDataString(SanitizeFileName(fileName));
-            context.Response.Headers["Content-Disposition"] =
-                $"attachment; filename=\"{asciiFileName}.mp3\"; filename*=UTF-8''{utf8FileName}.mp3"; context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            context.Response.Headers["Content-Disposition"] = $"attachment; filename=\"{asciiFileName}.mp3\"; filename*=UTF-8''{utf8FileName}.mp3";
             context.Response.Headers["Pragma"] = "no-cache";
             context.Response.Headers["Expires"] = "0";
             context.Response.Headers["Accept-Ranges"] = "none";
             context.Response.Headers["Connection"] = "close";
+            context.Response.Headers["File-Name"] = Uri.EscapeDataString(sanitizedFileName);
+            context.Response.Headers.Append("Access-Control-Expose-Headers", "File-Name");
 
             var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
 
@@ -208,7 +199,7 @@ namespace Muzzon.ge.Helpers
                         {
                             await logger.LogDownloadAsync(
                                 url: url,
-                                fileName: fileName,
+                                fileName: filename,
                                 country: ipData.Country,
                                 region: ipData.Region,
                                 ipData.Ip
@@ -271,41 +262,13 @@ namespace Muzzon.ge.Helpers
                 }
             });
         }
-        public static async Task<string> GetVideoFileNameAsync(string url)
+        public static string SanitizeFileName(string fileName)
         {
-            try
-            {
-                using var titleProcess = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "yt-dlp",
-                        Arguments = $"--print filename -o \"%(title)s.%(ext)s\" {url}",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
+            var invalidChars = Path.GetInvalidFileNameChars();
+            foreach (var c in invalidChars)
+                fileName = fileName.Replace(c, '_');
 
-                titleProcess.Start();
-
-                string? fileName = await titleProcess.StandardOutput.ReadLineAsync();
-                await titleProcess.WaitForExitAsync();
-
-                return string.IsNullOrWhiteSpace(fileName) ? "audio.mp3" : fileName.Trim();
-            }
-            catch
-            {
-                return "audio.mp3";
-            }
-        }
-        public static string SanitizeFileName(string input)
-        {
-            foreach (var c in Path.GetInvalidFileNameChars())
-                input = input.Replace(c, '_');
-
-            return input;
+            return fileName.Trim();
         }
         private static string RemoveNonAscii(string input)
         {
