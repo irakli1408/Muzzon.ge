@@ -165,7 +165,10 @@ namespace Muzzon.ge.Helpers
             context.Response.Headers["File-Name"] = Uri.EscapeDataString(sanitizedFileName);
             context.Response.Headers.Append("Access-Control-Expose-Headers", "File-Name");
 
-            var ipData = await ResolveClientGeoAsync(context, logger, context.RequestAborted);
+            var rootServiceProvider = context.RequestServices;
+            using var scope = rootServiceProvider.CreateScope();
+
+            var serviceScopeFactory = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
 
             try
             {
@@ -178,45 +181,67 @@ namespace Muzzon.ge.Helpers
             }
             finally
             {
+                var urlCopy = url;
+                var filenameCopy = filename;
+                var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
                 _ = Task.Run(async () =>
                 {
+                    string country = "unknown";
+                    string region = "unknown";
+                    string ipAddress = ip;
+
                     try
                     {
-                        await process.WaitForExitAsync();
+                        (ipAddress, country, region) = await ResolveClientGeoAsync(ipAddress, logger);
+
+                        await process.WaitForExitAsync(cancellationToken);
+
+                        using var scope = serviceScopeFactory.CreateScope(); 
+                        var scopedLogger = scope.ServiceProvider.GetRequiredService<IAppLogger>();
+
                         if (process.ExitCode != 0)
                         {
-                            await logger.LogErrorAsync(
-                                url: url,
+                            await scopedLogger.LogErrorAsync(
+                                url: urlCopy,
                                 errorMessage: $"yt-dlp exited with code {process.ExitCode}.",
                                 stackTrace: "",
                                 errorType: "YTDLPProcessError",
-                                country: ipData.Country,
-                                region: ipData.Region,
-                                ipData.Ip
+                                country: country,
+                                region: region,
+                                ipAddress: ipAddress
                             );
                         }
                         else
                         {
-                            await logger.LogDownloadAsync(
-                                url: url,
-                                fileName: filename,
-                                country: ipData.Country,
-                                region: ipData.Region,
-                                ipData.Ip
+                            await scopedLogger.LogDownloadAsync(
+                                url: urlCopy,
+                                fileName: filenameCopy,
+                                country: country,
+                                region: region,
+                                ipAddress: ipAddress
                             );
                         }
                     }
                     catch (Exception ex)
                     {
-                        await logger.LogErrorAsync(
-                            url: url,
-                            errorMessage: "Process monitoring failed: " + ex.Message,
-                            stackTrace: ex.StackTrace ?? "",
-                            errorType: "YTDLPMonitorError",
-                            country: ipData.Country,
-                            region: ipData.Region,
-                            ipData.Ip
-                        );
+                        try
+                        {
+                            using var scope = serviceScopeFactory.CreateScope(); 
+                            var scopedLogger = scope.ServiceProvider.GetRequiredService<IAppLogger>();
+
+                            await scopedLogger.LogErrorAsync(
+                                url: urlCopy,
+                                errorMessage: "Background logging failed: " + ex.Message,
+                                stackTrace: ex.StackTrace ?? "",
+                                errorType: "YTDLPMonitorBackgroundError",
+                                country: country,
+                                region: region,
+                                ipAddress: ip
+                            );
+                        }
+                        catch { }
+                       
                     }
                 });
             }
@@ -274,14 +299,17 @@ namespace Muzzon.ge.Helpers
         {
             return new string(input.Where(c => c <= 127).ToArray());
         }
-        public static async Task<(string Ip, string Country, string Region)> ResolveClientGeoAsync(HttpContext context, IAppLogger logger, CancellationToken cancellationToken = default)
+        public static Task<(string Ip, string Country, string Region)> ResolveClientGeoAsync(HttpContext context, IAppLogger logger, CancellationToken cancellationToken = default)
         {
             var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
+            return ResolveClientGeoAsync(ip, logger, cancellationToken);
+        }
+        public static async Task<(string Ip, string Country, string Region)> ResolveClientGeoAsync(string ip, IAppLogger logger, CancellationToken cancellationToken = default)
+        {
             string country = "unknown";
             string region = "unknown";
 
-            if (ip != "unknown")
+            if (!string.IsNullOrWhiteSpace(ip) && ip != "unknown")
             {
                 try
                 {
